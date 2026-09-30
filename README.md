@@ -256,8 +256,6 @@ Reports are generated under `target/surefire-reports/`.
 
 Verified on Windows with JDK 19.0.2 compiling to Java 17. The latest `mvnw.cmd -B test` passed 57 tests, including Swagger documentation and account listing with duplicate names and updated balances. Earlier real-HTTP verification covers the banking demo (Alice 800, Bob 300, matching histories), a negative-balance validation check (400), Swagger UI, and OpenAPI document generation. Java 17 is the compilation target; verification used the locally installed Java 19 runtime.
 
-## Walkthrough and submission
-
-Read [the Chinese walkthrough](docs/WALKTHROUGH.zh-CN.md) for a guided explanation of the code and interview talking points.
+## Submission
 
 For submission, put this project in your GitHub repository and provide its link. Include source, tests, `pom.xml`, Maven Wrapper files (including `.mvn`), README, and documentation. Exclude generated `target/`, IDE configuration, and local dependency caches. `.gitignore` is provided. No database or credentials are required to run the project.
