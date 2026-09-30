@@ -1,14 +1,30 @@
 # Banking API
 
-A Java / Spring Boot REST API for creating accounts, transferring money, and retrieving account transaction history. Data is stored in memory. The application uses Controller, Service, and Repository layers, constructor dependency injection, DTOs, Bean Validation, and consistent JSON errors.
+A Java / Spring Boot REST API for creating accounts, transferring money, and retrieving account balances and transaction history. Use the built-in Swagger UI to try the complete flow in your browser.
 
-## Prerequisites
+Data is stored in memory and cleared when the application restarts. No database setup or credentials are required.
 
-- A JDK compatible with Spring Boot 4.1.1 (Java 17 minimum). The project targets Java 17.
+## Tech stack
+
+| Component | Version / implementation |
+| --- | --- |
+| Java | 17 compilation target |
+| Spring Boot | 4.1.1 |
+| HTTP API | Spring MVC, JSON request/response DTOs, Jakarta Bean Validation |
+| API documentation | springdoc OpenAPI starter 3.1.1 with Swagger UI |
+| Storage | In-memory repository with immutable state |
+| Build | Maven Wrapper |
+| Tests | JUnit, Spring Boot Test, MockMvc |
+
+## Quick start
+
+### Prerequisites
+
+- JDK 17 or later, compatible with the configured Spring Boot version.
 - `JAVA_HOME` pointing to the JDK, with `java` available in your terminal.
 - Internet access on the first build to download Maven and dependencies. Maven Wrapper is included; a separate Maven installation is not needed.
 
-## Build, test, and run
+### Build, test, and run
 
 Run these commands from the folder containing `pom.xml`.
 
@@ -34,6 +50,84 @@ java -jar .\target\banking-api-0.0.1-SNAPSHOT.jar
 
 The default address is `http://localhost:8080`. Stop it with Ctrl+C. If another application is using the port, stop that application or run the JAR with `--server.port=8081`.
 
+### Local URLs
+
+Open these links while the application is running:
+
+| Page / endpoint | URL |
+| --- | --- |
+| Swagger UI | [http://localhost:8080/swagger-ui.html](http://localhost:8080/swagger-ui.html) |
+| OpenAPI JSON | [http://localhost:8080/v3/api-docs](http://localhost:8080/v3/api-docs) |
+| Account list | [http://localhost:8080/api/accounts](http://localhost:8080/api/accounts) |
+| Health check | [http://localhost:8080/api/health](http://localhost:8080/api/health) |
+
+The Swagger entry point redirects to `/swagger-ui/index.html`. The health endpoint returns `{"status":"UP"}`. If you change the server port, update the URLs accordingly.
+
+## Try the API with Swagger UI
+
+Swagger UI lists the account, transfer, and health endpoints. Expand an endpoint, click **Try it out**, supply any required input, and click **Execute**. No authentication is required.
+
+### 1. Create two accounts
+
+Expand **POST `/api/accounts`** and execute this request:
+
+```json
+{
+  "ownerName": "Alice",
+  "initialBalance": 1000.00
+}
+```
+
+Under **Server response**, expect **201 Created**. Copy the generated `id` from the response body; you will use it as Alice's account ID.
+
+Execute the same endpoint again with:
+
+```json
+{
+  "ownerName": "Bob",
+  "initialBalance": 100.00
+}
+```
+
+Copy Bob's generated `id` as well. Each execution creates a new account, even if the owner name already exists.
+
+### 2. Find account IDs and balances
+
+Expand **GET `/api/accounts`**, click **Try it out**, then **Execute**. No input is required. The response lists each account's `id`, `ownerName`, and current `balance`.
+
+Use this endpoint whenever you need to find an ID again. Names can repeat, so identify accounts by their unique IDs. A fresh application with no accounts returns `[]`.
+
+### 3. Transfer funds
+
+Expand **POST `/api/transfers`** and replace both placeholder strings below with the actual UUIDs returned when creating Alice and Bob:
+
+```json
+{
+  "fromAccountId": "paste-Alice-id-here",
+  "toAccountId": "paste-Bob-id-here",
+  "amount": 200.00
+}
+```
+
+Click **Execute**. Expect **201 Created** with the transaction's `id`, both account IDs, `amount`, and UTC `createdAt` timestamp. The placeholder strings are not valid UUIDs and must be replaced before execution.
+
+### 4. Check balances and history
+
+Execute **GET `/api/accounts`** again, or use **GET `/api/accounts/{accountId}`** with each account's ID. After one successful transfer:
+
+| Account | Opening balance | Current balance |
+| --- | ---: | ---: |
+| Alice | 1000.00 | 800.00 |
+| Bob | 100.00 | 300.00 |
+
+Execute **GET `/api/accounts/{accountId}/transactions`** for Alice and then Bob. Both histories contain the same transfer ID. Opening balances do not create history entries.
+
+### 5. Try an error response
+
+Using the same IDs, attempt to transfer `900.00` from Alice to Bob. Alice now has only `800.00`, so the API returns **409 Conflict** with code `INSUFFICIENT_FUNDS`. Both balances and histories remain unchanged.
+
+**Swagger tips:** **Example Value** shows sample documentation; **Server response** shows the actual result of your request. POST requests change the running application's data, so clicking **Execute** again repeats the operation. Use IDs from the current server run: restarting clears all accounts and transfers, and old IDs return 404.
+
 ## API
 
 | Method | Path | Purpose | Success |
@@ -43,7 +137,7 @@ The default address is `http://localhost:8080`. Stop it with Ctrl+C. If another 
 | GET | `/api/accounts/{accountId}` | Retrieve account details and balance | 200 |
 | POST | `/api/transfers` | Transfer funds | 201 |
 | GET | `/api/accounts/{accountId}/transactions` | Incoming and outgoing transfer history | 200 |
-| GET | `/api/health` | Optional liveness endpoint | 200 |
+| GET | `/api/health` | Return application liveness status | 200 |
 
 All POST requests use `Content-Type: application/json`.
 
@@ -142,50 +236,9 @@ Validation errors identify fields:
 
 All input and business-rule checks complete before a transfer changes stored state.
 
-## Use Swagger UI in your browser
+## Try the API from PowerShell
 
-After starting (or restarting) the application, open **http://localhost:8080/swagger-ui.html**. The page lists the account, transfer, and health endpoints and lets you call them directly. No Postman or demo script is required. The underlying OpenAPI JSON is available at `http://localhost:8080/v3/api-docs`.
-
-1. Expand `POST /api/accounts`, click **Try it out**, enter `{"ownerName":"Alice","initialBalance":1000.00}`, then click **Execute**.
-2. Under **Server response**, check the 201 status and copy the returned account `id`.
-3. Execute the same endpoint with `{"ownerName":"Bob","initialBalance":100.00}` and copy Bob's new `id`.
-
-If you lose an ID, expand **GET `/api/accounts`**, click **Try it out**, then **Execute**. Under **Server response**, find the account by `ownerName` and copy its `id`. You can also open `http://localhost:8080/api/accounts` directly in a browser to see the JSON list.
-
-4. Expand `POST /api/transfers`, click **Try it out**, and replace the example values with the actual IDs and a positive amount:
-
-```json
-{
-  "fromAccountId": "paste-Alice-id-here",
-  "toAccountId": "paste-Bob-id-here",
-  "amount": 200.00
-}
-```
-
-5. Click **Execute**. Query each account through `GET /api/accounts/{accountId}` to check balances of 800 and 300.
-6. Use `GET /api/accounts/{accountId}/transactions` to see the transfer in either account's history.
-
-POST requests in Swagger UI really create accounts and transfer funds in the running application's memory. Use IDs from the current server run; restarting the application clears its accounts and transactions. **Example Value** is sample documentation; **Server response** is the actual result of your request.
-
-Swagger UI is provided by `org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.1`. Its documentation is generated from the existing controllers and DTOs. The two POST methods have `@ApiResponse` annotations so their documented success status correctly shows 201.
-
-## Try a complete scenario with the optional script
-
-Keep the server running in one terminal. Open a second PowerShell terminal in the project folder:
-
-```powershell
-.\scripts\demo.ps1
-```
-
-If your PowerShell policy blocks this local script, run a separate process with a one-time override (it does not change the machine's persistent policy):
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\demo.ps1
-```
-
-The script creates Alice with 1000 and Bob with 100, transfers 200, checks balances of 800 and 300, and shows both histories. Each execution creates new accounts.
-
-For individual requests without running the script:
+Keep the server running in one terminal, then paste these commands into a second PowerShell terminal. They create two new accounts, transfer 200, and retrieve balances and both histories using the IDs returned by the server:
 
 ```powershell
 $apiBase = 'http://localhost:8080'
@@ -196,6 +249,7 @@ Invoke-RestMethod -Method Post -Uri "$apiBase/api/transfers" -ContentType 'appli
 Invoke-RestMethod -Uri "$apiBase/api/accounts/$($alice.id)"
 Invoke-RestMethod -Uri "$apiBase/api/accounts/$($bob.id)"
 Invoke-RestMethod -Uri "$apiBase/api/accounts/$($alice.id)/transactions"
+Invoke-RestMethod -Uri "$apiBase/api/accounts/$($bob.id)/transactions"
 ```
 
 ## Design
@@ -216,16 +270,17 @@ HTTP / JSON
 - **DTOs**: `dto` contains HTTP request/response records; `repository.dto` contains immutable records passed between Service and Repository. Internal maps never leave the repository.
 - **Errors**: `GlobalExceptionHandler` translates validation/framework exceptions and business failures to consistent JSON responses.
 - **Time**: a UTC `Clock` bean makes production timestamps explicit and tests deterministic.
+- **API documentation**: springdoc generates the OpenAPI document and Swagger UI from controllers and DTOs. Both POST endpoints explicitly document their 201 success status; the account-list endpoint includes a summary for finding IDs and balances.
 
 ### Concurrency and atomicity
 
-All public operations on the singleton `BankingService` synchronize on the same service instance. This covers the full account lookup, validation, balance calculation, and save, so simultaneous requests cannot both spend a stale balance. The same monitor covers account creation and reads. This is deliberately simple and serializes requests for this small, single-instance task.
+All public operations on the singleton `BankingService` synchronize on the same service instance. This covers the full account lookup, validation, balance calculation, and save, so simultaneous requests cannot both spend a stale balance. The same monitor covers account creation and reads. This is deliberately simple and serializes requests for this small, single-instance application.
 
 The repository stores immutable records in an immutable `State`. For a transfer, it prepares copies of the account and transaction maps, then publishes the complete new state with one assignment. If constructing that state fails, the previous state remains intact. Returned account records cannot be modified to mutate stored balances. Repository writes are also synchronized, and the published state is volatile.
 
 This is an in-memory consistency mechanism, not a database transaction. Plain `@Transactional` would not roll back these maps. Using only a `ConcurrentHashMap` would not make a multi-step transfer atomic.
 
-Copying maps costs O(accounts + transactions) per transfer; history lookup scans and sorts matching transactions. These are acceptable for the requested small in-memory application, but would not be the design for a large deployment. A database implementation would need database transactions and concurrency controls covering the entire transfer, not just an implementation of the save methods. Multiple service instances sharing one repository would likewise require a different locking boundary.
+Copying maps costs O(accounts + transactions) per transfer; history lookup scans and sorts matching transactions. A database implementation would need database transactions and concurrency controls covering the entire transfer, not just an implementation of the save methods. Multiple service instances sharing one repository would likewise require a different locking boundary.
 
 ## Assumptions and scope
 
@@ -237,25 +292,23 @@ Copying maps costs O(accounts + transactions) per transfer; history lookup scans
 - Transfers have no fees, overdrafts, self-transfers, pending status, or external bank integration.
 - A repeated POST creates a new operation. Idempotency/retry deduplication is not implemented.
 - All state is process-local, reset on restart, and not shared between application instances.
-- History is unpaginated for the small take-home scope.
-- Authentication/authorization and persistence are outside this task; this is a demonstration API, not a production banking service.
-- `GET /api/accounts/{id}` is an added convenience for checking balances. `HealthController` is an optional liveness/learning endpoint and is not one of the three core assignment requirements.
-- `GET /api/accounts` is an added convenience for finding account IDs in Swagger UI.
+- Account lists and transaction histories are unpaginated.
+- This is a demonstration API. Authentication, authorization, and persistent storage are not implemented.
 
 ## Tests
 
-`./mvnw test` (Windows: `.\mvnw.cmd test`) runs:
+Run `.\mvnw.cmd test` on Windows or `sh mvnw test` on macOS / Linux. The suite includes:
 
 - `BankingServiceTest`: balance calculations, exact-balance transfer, missing accounts, self-transfer, insufficient funds, recipient limit, history filtering, simulated pre-commit failure, concurrent overspending, and concurrent opposite-direction transfers.
 - `InMemoryBankingRepositoryTest`: state preservation when constructing a commit fails, and chronological history order.
 - `BankingApiIntegrationTest`: full Spring context with MockMvc, JSON mapping, UUID parsing, DTO validation, HTTP statuses, Location headers, error formatting, and account-transfer-history flows.
 - `BankingApiApplicationTests`: the generated context-startup smoke test.
-- `SwaggerIntegrationTest`: the UI entry point, HTML page, configuration, and generated endpoint/request-field documentation.
+- `SwaggerIntegrationTest`: the UI redirect, HTML page, configuration, documented endpoints, required request fields, and 201 success responses for both POST endpoints.
 
 Reports are generated under `target/surefire-reports/`.
 
-Verified on Windows with JDK 19.0.2 compiling to Java 17. The latest `mvnw.cmd -B test` passed 57 tests, including Swagger documentation and account listing with duplicate names and updated balances. Earlier real-HTTP verification covers the banking demo (Alice 800, Bob 300, matching histories), a negative-balance validation check (400), Swagger UI, and OpenAPI document generation. Java 17 is the compilation target; verification used the locally installed Java 19 runtime.
+To run just the Swagger and HTTP API integration tests on Windows:
 
-## Submission
-
-For submission, put this project in your GitHub repository and provide its link. Include source, tests, `pom.xml`, Maven Wrapper files (including `.mvn`), README, and documentation. Exclude generated `target/`, IDE configuration, and local dependency caches. `.gitignore` is provided. No database or credentials are required to run the project.
+```powershell
+.\mvnw.cmd "-Dtest=SwaggerIntegrationTest,BankingApiIntegrationTest" test
+```
