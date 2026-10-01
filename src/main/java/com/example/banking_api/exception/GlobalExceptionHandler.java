@@ -30,7 +30,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 		HttpStatus status = switch (exception.reason()) {
 			case ACCOUNT_NOT_FOUND -> HttpStatus.NOT_FOUND;
 			case SAME_ACCOUNT -> HttpStatus.BAD_REQUEST;
-			case INSUFFICIENT_FUNDS, BALANCE_LIMIT_EXCEEDED -> HttpStatus.CONFLICT;
+			case INSUFFICIENT_FUNDS, BALANCE_LIMIT_EXCEEDED, ACCOUNT_INACTIVE -> HttpStatus.CONFLICT;
 		};
 		return ResponseEntity.status(status)
 				.body(new ErrorResponse(exception.reason().name(), exception.getMessage(), Map.of()));

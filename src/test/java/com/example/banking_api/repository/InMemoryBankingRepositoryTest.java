@@ -12,6 +12,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 import com.example.banking_api.repository.dto.AccountData;
+import com.example.banking_api.model.AccountStatus;
 import com.example.banking_api.repository.dto.TransactionData;
 
 class InMemoryBankingRepositoryTest {
@@ -19,8 +20,8 @@ class InMemoryBankingRepositoryTest {
 	@Test
 	void failedCommitLeavesBothAccountsAndHistoryIntact() {
 		InMemoryBankingRepository repository = new InMemoryBankingRepository();
-		AccountData alice = new AccountData(UUID.randomUUID(), "Alice", new BigDecimal("100.00"));
-		AccountData bob = new AccountData(UUID.randomUUID(), "Bob", new BigDecimal("0.00"));
+		AccountData alice = new AccountData(UUID.randomUUID(), "Alice", new BigDecimal("100.00"), AccountStatus.ACTIVE);
+		AccountData bob = new AccountData(UUID.randomUUID(), "Bob", new BigDecimal("0.00"), AccountStatus.ACTIVE);
 		repository.saveAccount(alice);
 		repository.saveAccount(bob);
 		// Failure occurs after the local copies receive new balances, but before publication.
@@ -34,8 +35,8 @@ class InMemoryBankingRepositoryTest {
 	@Test
 	void historyIsChronologicalEvenWhenTransactionsAreInsertedOutOfOrder() {
 		InMemoryBankingRepository repository = new InMemoryBankingRepository();
-		AccountData alice = new AccountData(UUID.randomUUID(), "Alice", new BigDecimal("100.00"));
-		AccountData bob = new AccountData(UUID.randomUUID(), "Bob", new BigDecimal("100.00"));
+		AccountData alice = new AccountData(UUID.randomUUID(), "Alice", new BigDecimal("100.00"), AccountStatus.ACTIVE);
+		AccountData bob = new AccountData(UUID.randomUUID(), "Bob", new BigDecimal("100.00"), AccountStatus.ACTIVE);
 		TransactionData earlier = new TransactionData(UUID.randomUUID(), alice.id(), bob.id(), BigDecimal.ONE,
 				Instant.parse("2026-09-30T10:00:00Z"));
 		TransactionData later = new TransactionData(UUID.randomUUID(), bob.id(), alice.id(), BigDecimal.ONE,

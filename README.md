@@ -93,7 +93,7 @@ Copy Bob's generated `id` as well. Each execution creates a new account, even if
 
 ### 2. Find account IDs and balances
 
-Expand **GET `/api/accounts`**, click **Try it out**, then **Execute**. No input is required. The response lists each account's `id`, `ownerName`, and current `balance`.
+Expand **GET `/api/accounts`**, click **Try it out**, then **Execute**. No input is required. The response lists each account's `id`, `ownerName`, current `balance`, and `status` (`ACTIVE` or `INACTIVE`). Inactive accounts remain in the list.
 
 Use this endpoint whenever you need to find an ID again. Names can repeat, so identify accounts by their unique IDs. A fresh application with no accounts returns `[]`.
 
@@ -128,6 +128,20 @@ Using the same IDs, attempt to transfer `900.00` from Alice to Bob. Alice now ha
 
 **Swagger tips:** **Example Value** shows sample documentation; **Server response** shows the actual result of your request. POST requests change the running application's data, so clicking **Execute** again repeats the operation. Use IDs from the current server run: restarting clears all accounts and transfers, and old IDs return 404.
 
+### 6. Deactivate and reactivate an account
+
+New accounts start as `ACTIVE`. Expand **PATCH `/api/accounts/{accountId}/status`**, click **Try it out**, enter Alice's actual ID in `accountId`, and execute:
+
+```json
+{"status":"INACTIVE"}
+```
+
+Expect **200 OK** with the account's unchanged ID, name and balance, plus `"status":"INACTIVE"`. Try a transfer from Alice to Bob, then from Bob to Alice: both return **409 Conflict** with `ACCOUNT_INACTIVE`, without changing balances or transaction histories. Account details, listing and existing history remain available.
+
+To reactivate Alice, execute the same PATCH endpoint with `{"status":"ACTIVE"}`. Transfers can then succeed again, subject to the usual validation and balance rules. Repeating the current status is a successful no-op. Status changes do not create transfer-history entries.
+
+Status is required and must be exactly `ACTIVE` or `INACTIVE`. Missing or null status returns 400 `VALIDATION_ERROR`; unknown values, lowercase values and numeric enum ordinals return 400 `INVALID_REQUEST`. An unknown account returns 404 `ACCOUNT_NOT_FOUND`.
+
 ## API
 
 | Method | Path | Purpose | Success |
@@ -135,11 +149,12 @@ Using the same IDs, attempt to transfer `900.00` from Alice to Bob. Alice now ha
 | POST | `/api/accounts` | Create an account | 201, with `Location` header |
 | GET | `/api/accounts` | List all account IDs, owner names, and current balances | 200 |
 | GET | `/api/accounts/{accountId}` | Retrieve account details and balance | 200 |
+| PATCH | `/api/accounts/{accountId}/status` | Manually deactivate or reactivate an account | 200 |
 | POST | `/api/transfers` | Transfer funds | 201 |
 | GET | `/api/accounts/{accountId}/transactions` | Incoming and outgoing transfer history | 200 |
 | GET | `/api/health` | Return application liveness status | 200 |
 
-All POST requests use `Content-Type: application/json`.
+All POST and PATCH requests use `Content-Type: application/json`.
 
 ### Create an account
 
@@ -156,7 +171,8 @@ Example response (IDs are generated, so actual values differ):
 {
   "id": "11111111-1111-4111-8111-111111111111",
   "ownerName": "Alice",
-  "balance": 1000.00
+  "balance": 1000.00,
+  "status": "ACTIVE"
 }
 ```
 
@@ -177,7 +193,7 @@ Content-Type: application/json
 }
 ```
 
-Both IDs must refer to existing, different accounts. Amount must be positive and have at most 12 integer digits and 2 decimal places. The sender must have enough funds and the recipient's resulting balance cannot exceed `999999999999.99`.
+Both IDs must refer to existing, different, ACTIVE accounts. An inactive sender or recipient is rejected before balance changes. Amount must be positive and have at most 12 integer digits and 2 decimal places. The sender must have enough funds and the recipient's resulting balance cannot exceed `999999999999.99`.
 
 Example response:
 
@@ -193,7 +209,7 @@ Example response:
 
 ### Retrieve account / transaction history
 
-`GET /api/accounts` returns all accounts as an array of `{id, ownerName, balance}` objects, sorted by owner name (case-sensitive), then UUID. No input is required. With no accounts it returns `[]`. Names can repeat; use the unique `id` to identify an account. This list is unpaginated and reflects the current in-memory balances.
+`GET /api/accounts` returns all accounts as an array of `{id, ownerName, balance, status}` objects, sorted by owner name (case-sensitive), then UUID. Both active and inactive accounts are included. No input is required. With no accounts it returns `[]`. Names can repeat; use the unique `id` to identify an account. This list is unpaginated and reflects the current in-memory balances.
 
 `GET /api/accounts/{accountId}` returns the same account fields as account creation, with the current balance.
 
@@ -230,6 +246,7 @@ Validation errors identify fields:
 | 400 | `SAME_ACCOUNT` | Source and destination are the same existing account |
 | 404 | `ACCOUNT_NOT_FOUND` | A well-formed account ID does not exist |
 | 409 | `INSUFFICIENT_FUNDS` | Transfer would overdraw the source |
+| 409 | `ACCOUNT_INACTIVE` | Transfer involves an inactive sender or recipient |
 | 409 | `BALANCE_LIMIT_EXCEEDED` | Transfer would exceed the destination balance limit |
 | 404 / 405 / 415 | `NOT_FOUND` / `METHOD_NOT_ALLOWED` / `UNSUPPORTED_MEDIA_TYPE` | Invalid route, method, or content type |
 | 500 | `INTERNAL_ERROR` | Unexpected failure; internal details are logged, not returned |
@@ -278,6 +295,8 @@ All public operations on the singleton `BankingService` synchronize on the same 
 
 The repository stores immutable records in an immutable `State`. For a transfer, it prepares copies of the account and transaction maps, then publishes the complete new state with one assignment. If constructing that state fails, the previous state remains intact. Returned account records cannot be modified to mutate stored balances. Repository writes are also synchronized, and the published state is volatile.
 
+Status updates use the same service monitor as transfers. A concurrent transfer either finishes before deactivation or observes the inactive status and fails; it cannot overwrite deactivation using an old account snapshot. `AccountData.withBalance()` preserves status, and `withStatus()` preserves the balance. Re-enabling an account preserves its ID and history.
+
 This is an in-memory consistency mechanism, not a database transaction. Plain `@Transactional` would not roll back these maps. Using only a `ConcurrentHashMap` would not make a multi-step transfer atomic.
 
 Copying maps costs O(accounts + transactions) per transfer; history lookup scans and sorts matching transactions. A database implementation would need database transactions and concurrency controls covering the entire transfer, not just an implementation of the save methods. Multiple service instances sharing one repository would likewise require a different locking boundary.
@@ -288,6 +307,7 @@ Copying maps costs O(accounts + transactions) per transfer; history lookup scans
 - The maximum account balance and request amount is `999999999999.99`.
 - Each API account is a standalone account with an owner name. There is no separate user/login model; names need not be unique.
 - Account IDs and transaction IDs are server-generated UUIDs. Owner names are trimmed on creation.
+- Account status is manually controlled; there is no inactivity timer. `INACTIVE` blocks incoming and outgoing transfers but allows reads and reactivation. These are this demo's business rules. Status changes are not recorded as money transfers or separate audit events.
 - Initial balance is opening funding and is not a transaction-history entry. Only successful transfers enter history; the same transaction ID appears for both parties.
 - Transfers have no fees, overdrafts, self-transfers, pending status, or external bank integration.
 - A repeated POST creates a new operation. Idempotency/retry deduplication is not implemented.
@@ -303,6 +323,7 @@ Run `.\mvnw.cmd test` on Windows or `sh mvnw test` on macOS / Linux. The suite i
 - `InMemoryBankingRepositoryTest`: state preservation when constructing a commit fails, and chronological history order.
 - `BankingApiIntegrationTest`: full Spring context with MockMvc, JSON mapping, UUID parsing, DTO validation, HTTP statuses, Location headers, error formatting, and account-transfer-history flows.
 - `BankingApiApplicationTests`: the generated context-startup smoke test.
+- `AccountStatusIntegrationTest`: default ACTIVE status, manual deactivation/reactivation, idempotent status updates, both transfer directions blocked while inactive, preserved balances/history, readable inactive accounts, and invalid status/ID handling. The service suite also checks concurrent deactivation and transfer.
 - `SwaggerIntegrationTest`: the UI redirect, HTML page, configuration, documented endpoints, required request fields, and 201 success responses for both POST endpoints.
 
 Reports are generated under `target/surefire-reports/`.

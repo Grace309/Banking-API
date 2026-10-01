@@ -15,6 +15,7 @@ import com.example.banking_api.dto.TransactionResponse;
 import com.example.banking_api.dto.TransferRequest;
 import com.example.banking_api.exception.BankingException;
 import com.example.banking_api.exception.BankingException.Reason;
+import com.example.banking_api.model.AccountStatus;
 import com.example.banking_api.repository.BankingRepository;
 import com.example.banking_api.repository.dto.AccountData;
 import com.example.banking_api.repository.dto.TransactionData;
@@ -36,7 +37,7 @@ public class BankingService {
 	// read-check-write workflow and keeps reads consistent with completed transfers.
 	public synchronized AccountResponse createAccount(CreateAccountRequest request) {
 		AccountData account = new AccountData(UUID.randomUUID(), request.ownerName().strip(),
-				money(request.initialBalance()));
+				money(request.initialBalance()), AccountStatus.ACTIVE);
 		repository.saveAccount(account);
 		return toResponse(account);
 	}
@@ -54,6 +55,8 @@ public class BankingService {
 	public synchronized TransactionResponse transfer(TransferRequest request) {
 		AccountData source = requireAccount(request.fromAccountId());
 		AccountData destination = requireAccount(request.toAccountId());
+		requireActive(source);
+		requireActive(destination);
 
 		if (source.id().equals(destination.id())) {
 			throw new BankingException(Reason.SAME_ACCOUNT, "Source and destination accounts must differ");
@@ -87,6 +90,23 @@ public class BankingService {
 				.toList();
 	}
 
+	public synchronized AccountResponse updateAccountStatus(UUID accountId, AccountStatus status) {
+		java.util.Objects.requireNonNull(status, "Account status is required");
+		AccountData account = requireAccount(accountId);
+		if (account.status() == status) {
+			return toResponse(account);
+		}
+		AccountData updated = account.withStatus(status);
+		repository.saveAccount(updated);
+		return toResponse(updated);
+	}
+
+	private void requireActive(AccountData account) {
+		if (account.status() != AccountStatus.ACTIVE) {
+			throw new BankingException(Reason.ACCOUNT_INACTIVE, "Account is inactive: " + account.id());
+		}
+	}
+
 	private AccountData requireAccount(UUID accountId) {
 		return repository.findAccountById(accountId)
 				.orElseThrow(() -> new BankingException(Reason.ACCOUNT_NOT_FOUND, "Account not found: " + accountId));
@@ -97,7 +117,7 @@ public class BankingService {
 	}
 
 	private static AccountResponse toResponse(AccountData account) {
-		return new AccountResponse(account.id(), account.ownerName(), account.balance());
+		return new AccountResponse(account.id(), account.ownerName(), account.balance(), account.status());
 	}
 
 	private static TransactionResponse toResponse(TransactionData transaction) {

@@ -7,6 +7,7 @@ import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.example.banking_api.dto.AccountResponse;
 import com.example.banking_api.dto.CreateAccountRequest;
 import com.example.banking_api.dto.TransactionResponse;
+import com.example.banking_api.dto.UpdateAccountStatusRequest;
 import com.example.banking_api.service.BankingService;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -39,7 +41,7 @@ public class AccountController {
 	}
 
 	@GetMapping
-	@Operation(summary = "List all accounts", description = "Find account IDs, owner names and current balances. Sorted by owner name, then ID.")
+	@Operation(summary = "List all accounts", description = "Find account IDs, owner names, current balances and statuses, including inactive accounts. Sorted by owner name, then ID.")
 	public List<AccountResponse> getAccounts() {
 		return service.getAccounts();
 	}
@@ -47,6 +49,13 @@ public class AccountController {
 	@GetMapping("/{accountId}")
 	public AccountResponse getAccount(@PathVariable UUID accountId) {
 		return service.getAccount(accountId);
+	}
+
+	@PatchMapping("/{accountId}/status")
+	@Operation(summary = "Activate or deactivate an account", description = "INACTIVE blocks incoming and outgoing transfers while preserving balances and history. Set ACTIVE to reactivate. Repeating the current status has no effect.")
+	public AccountResponse updateAccountStatus(@PathVariable UUID accountId,
+			@Valid @RequestBody UpdateAccountStatusRequest request) {
+		return service.updateAccountStatus(accountId, request.status());
 	}
 
 	@GetMapping("/{accountId}/transactions")

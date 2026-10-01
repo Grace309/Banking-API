@@ -15,6 +15,7 @@ public class BankingException extends RuntimeException {
 
 	public enum Reason {
 		ACCOUNT_NOT_FOUND,
+		ACCOUNT_INACTIVE,
 		INSUFFICIENT_FUNDS,
 		SAME_ACCOUNT,
 		BALANCE_LIMIT_EXCEEDED

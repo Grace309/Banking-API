@@ -28,6 +28,7 @@ import com.example.banking_api.dto.TransactionResponse;
 import com.example.banking_api.dto.TransferRequest;
 import com.example.banking_api.exception.BankingException;
 import com.example.banking_api.exception.BankingException.Reason;
+import com.example.banking_api.model.AccountStatus;
 import com.example.banking_api.repository.InMemoryBankingRepository;
 import com.example.banking_api.repository.dto.AccountData;
 import com.example.banking_api.repository.dto.TransactionData;
@@ -223,6 +224,43 @@ class BankingServiceTest {
 					.add(service.getAccount(bob.id()).balance()).add(service.getAccount(carol.id()).balance());
 			assertEquals(new BigDecimal("100.00"), total);
 			assertEquals(1, service.getTransactions(alice.id()).size());
+		} finally {
+			start.countDown();
+			executor.shutdownNow();
+		}
+	}
+
+	@Test
+	void concurrentDeactivationAndTransferPreserveStatusAndConsistentBalances() throws Exception {
+		AccountResponse alice = account("Alice", "100");
+		AccountResponse bob = account("Bob", "100");
+		ExecutorService executor = Executors.newFixedThreadPool(2);
+		CountDownLatch start = new CountDownLatch(1);
+		try {
+			Future<?> deactivate = executor.submit(() -> {
+				assertTrue(start.await(5, TimeUnit.SECONDS));
+				return service.updateAccountStatus(alice.id(), AccountStatus.INACTIVE);
+			});
+			Future<Boolean> transferred = executor.submit(() -> {
+				assertTrue(start.await(5, TimeUnit.SECONDS));
+				try {
+					transfer(alice, bob, "10");
+					return true;
+				} catch (BankingException error) {
+					assertEquals(Reason.ACCOUNT_INACTIVE, error.reason());
+					return false;
+				}
+			});
+			start.countDown();
+			deactivate.get(5, TimeUnit.SECONDS);
+			boolean success = transferred.get(5, TimeUnit.SECONDS);
+			assertEquals(AccountStatus.INACTIVE, service.getAccount(alice.id()).status());
+			assertBalance(alice, success ? "90.00" : "100.00");
+			assertBalance(bob, success ? "110.00" : "100.00");
+			assertEquals(success ? 1 : 0, service.getTransactions(alice.id()).size());
+			assertEquals(service.getTransactions(alice.id()), service.getTransactions(bob.id()));
+			assertEquals(Reason.ACCOUNT_INACTIVE,
+					assertThrows(BankingException.class, () -> transfer(alice, bob, "10")).reason());
 		} finally {
 			start.countDown();
 			executor.shutdownNow();
