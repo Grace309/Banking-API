@@ -328,6 +328,20 @@ Run `.\mvnw.cmd test` on Windows or `sh mvnw test` on macOS / Linux. The suite i
 
 Reports are generated under `target/surefire-reports/`.
 
+### GitHub Actions
+
+The workflow in `.github/workflows/ci.yml` runs on every branch push, on pull requests (opened, reopened, or updated), and through a manual **Run workflow** action. GitHub provides an Ubuntu runner with Temurin Java 17 and caches Maven dependencies. The job runs:
+
+```bash
+sh mvnw --batch-mode --no-transfer-progress verify
+```
+
+This compiles the project, runs the full test suite, and builds the executable JAR. A failing test or build step fails the check. No application server or database needs to be started separately.
+
+View results in the repository's **Actions → Java CI → Build and test (Java 17)**, or in a pull request's checks. A push to a branch with an open pull request can produce both a push run and a pull-request run.
+
+The workflow reports failures after a push; it does not prevent the push itself. To require passing CI before merging, configure a GitHub branch ruleset or branch protection rule to require the **Build and test (Java 17)** status check. Repository protection settings are separate from this workflow.
+
 To run just the Swagger and HTTP API integration tests on Windows:
 
 ```powershell
